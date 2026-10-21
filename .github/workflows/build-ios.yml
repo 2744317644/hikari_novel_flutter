@@ -43,6 +43,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # macos-15 镜像默认选中的是 Xcode 16.4，但镜像是装了 26.x 的。
+      # device_info_plus 等插件用到了新 SDK 才有的 API（例如 NSProcessInfo.isiOSAppOnVision），
+      # 在 16.4 下会报 "No visible @interface ... declares the selector" 直接编译失败，
+      # 所以这里主动切到镜像上最新的 Xcode 26。
+      - name: Select newest Xcode
+        run: |
+          set -euo pipefail
+          pick=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -n1 || true)
+          if [ -z "$pick" ]; then
+            echo "::warning::未找到 Xcode 26，回退到最新的已安装版本"
+            pick=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -n1)
+          fi
+          echo "使用 $pick"
+          sudo xcode-select -s "$pick"
+          sudo xcodebuild -license accept 2>/dev/null || true
+          xcodebuild -version
+          xcodebuild -showsdks | grep -i '^.*iOS ' || true
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
