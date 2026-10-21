@@ -1,0 +1,117 @@
+name: Build iOS IPA (unsigned)
+
+# 背景：苹果不允许在 Windows/Linux 上编译 iOS 包，必须在装有 Xcode 的 macOS 上构建。
+# 这里借用 GitHub Actions 的 macOS 运行器出「未签名 ipa」，再自己侧载到 iPhone。
+#
+# 用法：fork 本仓库 -> 打开 Actions 标签页启用 workflow -> 选择本 workflow -> Run workflow
+# 产物：Actions 运行页面底部的 Artifacts -> HikariNovel-unsigned-ipa
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+    paths:
+      - 'lib/**'
+      - 'ios/**'
+      - 'assets/**'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - '.github/workflows/build-ios.yml'
+
+# 同一分支只保留最新一次构建，避免排队烧时长
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-ipa:
+    name: Build unsigned .ipa
+    runs-on: macos-15
+    timeout-minutes: 60
+
+    env:
+      # pubspec.lock 里记录的是国内镜像地址，这里保持一致，避免版本漂移
+      # Flutter SDK 本身走官方存储（runner 在海外，直连更快）
+      PUB_HOSTED_URL: https://pub.flutter-io.cn
+      # 关掉 Flutter 的统计上报，减少一次网络请求
+      FLUTTER_SUPPRESS_ANALYTICS: 'true'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Show toolchain versions
+        run: |
+          flutter --version
+          dart --version
+          xcodebuild -version
+          pod --version || echo "::warning::CocoaPods 未安装，构建可能失败"
+
+      - name: Install dependencies
+        run: |
+          for i in 1 2 3; do
+            if flutter pub get; then exit 0; fi
+            echo "::warning::flutter pub get 失败，10 秒后重试（$i/3）"
+            sleep 10
+          done
+          echo "::warning::国内镜像连续失败，回退到官方 pub.dev 再试一次"
+          export PUB_HOSTED_URL=https://pub.dev
+          if flutter pub get; then exit 0; fi
+          echo "::error::flutter pub get 失败，请检查网络或 pubspec.yaml"
+          exit 1
+
+      - name: Build iOS (no codesign)
+        run: |
+          set -o pipefail
+          flutter build ios --release --no-codesign 2>&1 | tee ios-build.log
+
+      - name: Package as .ipa
+        run: |
+          set -euo pipefail
+          APP="build/ios/iphoneos/Runner.app"
+          if [ ! -d "$APP" ]; then
+            echo "::error::未找到 $APP"
+            exit 1
+          fi
+
+          VERSION="$(awk -F'[+ ]' '/^version:/{print $2; exit}' pubspec.yaml)"
+          NAME="HikariNovel-${VERSION:-dev}-unsigned"
+          OUT="build/artifacts/${NAME}.ipa"
+
+          rm -rf build/ipa build/artifacts
+          mkdir -p build/ipa/Payload build/artifacts
+          cp -R "$APP" build/ipa/Payload/
+          ( cd build/ipa && zip -qry "../artifacts/${NAME}.ipa" Payload )
+
+          # 确认包内确实有可执行文件，避免上传一个空壳
+          # 先落盘再 grep，避免 grep -q 提前退出触发 SIGPIPE 被 pipefail 判为失败
+          unzip -l "$OUT" > /tmp/ipa-contents.txt
+          grep -q "Payload/Runner.app/Runner" /tmp/ipa-contents.txt
+          echo "产物：$OUT"
+          ls -lh build/artifacts
+
+      - name: Upload .ipa
+        uses: actions/upload-artifact@v4
+        with:
+          name: HikariNovel-unsigned-ipa
+          path: build/artifacts/*.ipa
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-build-log
+          path: ios-build.log
+          if-no-files-found: ignore
+          retention-days: 7

@@ -43,6 +43,20 @@
 		</array>
 		<key>CADisableMinimumFrameDurationOnPhone</key>
 		<true/>
+		<!-- file_picker 选择图片时 iOS 会校验权限说明，缺失会直接崩溃 -->
+		<key>NSPhotoLibraryUsageDescription</key>
+		<string>需要访问相册，用于导入自定义阅读背景图片</string>
+		<key>NSPhotoLibraryAddUsageDescription</key>
+		<string>需要写入相册，用于保存当前图片</string>
+		<!-- 仅使用系统 HTTPS 实现，不涉及自定义加密，跳过出口合规询问 -->
+		<key>ITSAppUsesNonExemptEncryption</key>
+		<false/>
+		<key>CFBundleLocalizations</key>
+		<array>
+			<string>zh-Hans</string>
+			<string>zh-Hant</string>
+			<string>en</string>
+		</array>
 		<key>UIApplicationSupportsIndirectInputEvents</key>
 		<true/>
 		<key>UIStatusBarHidden</key>
