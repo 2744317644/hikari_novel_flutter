@@ -106,7 +106,20 @@ cd build/ipa && zip -qry ../HikariNovel.ipa Payload
 
 ---
 
-## 关于 Flutter 版本
+## 关于 Xcode 和 Flutter 版本
+
+**Xcode 必须用 26.x。** `macos-15` 镜像默认选中的是 Xcode 16.4，而
+`device_info_plus` 用到了新 SDK 才有的 `NSProcessInfo.isiOSAppOnVision`，
+在 16.4 下会直接编译失败：
+
+```
+ARC Semantic Issue (Xcode): No visible @interface for 'NSProcessInfo'
+declares the selector 'isiOSAppOnVision'
+```
+
+镜像是装了 26.x 的（`/Applications/Xcode_26.0 ~ 26.3.app`），workflow 里的
+`Select newest Xcode` 步骤会自动挑最新的那个并 `xcode-select` 过去。若哪天镜像变了，
+这一步也会打印实际使用的版本，方便排查。
 
 `pubspec.lock` 里锁定的 `charset_converter 2.5.1` 要求 **Flutter ≥ 3.44.0**
 （`charset_converter` 负责 GBK/UTF-8 转码，缺了它小说正文会乱码）。
